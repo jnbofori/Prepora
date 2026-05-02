@@ -1,0 +1,26 @@
+# Prepora — Fly.io app configuration (app name is your Fly identifier; image is Docker Hub).
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+# Fly app slug (unchanged so deploys keep working; rename on Fly.io if you want it to match Prepora).
+app = "reactivities-jul"
+primary_region = "lhr"
+
+[build]
+  image = "jnbofori/prepora:latest"
+
+# making sure app runs on port 8080
+# and other non secret env variables here (from appsettings)
+[env]
+  ASPNETCORE_URLS="http://+:8080"
+  Cloudinary__CloudName="dv5ns7akx"
+  Cloudinary__ApiKey="317397127519548"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
