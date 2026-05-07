@@ -37,5 +37,23 @@ namespace Persistence.Repositories
     public void Add(Recipe recipe) => _context.Recipes.Add(recipe);
 
     public void Remove(Recipe recipe) => _context.Recipes.Remove(recipe);
+
+    public void AddIngredients(IEnumerable<RecipeIngredient> ingredients) =>
+      _context.RecipeIngredients.AddRange(ingredients);
+
+    public void RemoveIngredients(IEnumerable<RecipeIngredient> ingredients) =>
+      _context.RecipeIngredients.RemoveRange(ingredients);
+
+    public void AddSteps(IEnumerable<RecipeStep> steps) =>
+      _context.RecipeSteps.AddRange(steps);
+
+    public void RemoveSteps(IEnumerable<RecipeStep> steps) =>
+      _context.RecipeSteps.RemoveRange(steps);
+
+    public void AddTags(IEnumerable<RecipeTag> tags) =>
+      _context.RecipeTags.AddRange(tags);
+
+    public void RemoveTags(IEnumerable<RecipeTag> tags) =>
+      _context.RecipeTags.RemoveRange(tags);
   }
 }

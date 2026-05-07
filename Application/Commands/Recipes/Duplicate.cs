@@ -8,12 +8,12 @@ namespace Application.Commands.Recipes
 {
   public class Duplicate
   {
-    public class Command : IRequest<Result<Guid>>
+    public class Command : IRequest<Result<Unit>>
     {
       public Guid Id { get; set; }
     }
 
-    public class Handler : IRequestHandler<Command, Result<Guid>>
+    public class Handler : IRequestHandler<Command, Result<Unit>>
     {
       private readonly IRecipeRepository _recipes;
       private readonly IUnitOfWork _unitOfWork;
@@ -26,7 +26,7 @@ namespace Application.Commands.Recipes
         _userAccessor = userAccessor;
       }
 
-      public async Task<Result<Guid>> Handle(Command request, CancellationToken cancellationToken)
+      public async Task<Result<Unit>> Handle(Command request, CancellationToken cancellationToken)
       {
         var ownerId = _userAccessor.GetUserId();
         var source = await _recipes.GetByIdForOwnerAsync(request.Id, ownerId, cancellationToken);
@@ -83,9 +83,9 @@ namespace Application.Commands.Recipes
         _recipes.Add(copy);
 
         var ok = await _unitOfWork.SaveChangesAsync(cancellationToken) > 0;
-        if (!ok) return Result<Guid>.Failure("Failed to duplicate recipe");
+        if (!ok) return Result<Unit>.Failure("Failed to duplicate recipe");
 
-        return Result<Guid>.Success(copy.Id);
+        return Result<Unit>.Success(Unit.Value);
       }
     }
   }

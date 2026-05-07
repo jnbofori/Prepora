@@ -53,40 +53,53 @@ namespace Application.Commands.Recipes
         recipe.Servings = request.Recipe.Servings;
         recipe.UpdatedUtc = DateTime.UtcNow;
 
+        var oldIngredients = recipe.Ingredients.ToList();
         recipe.Ingredients.Clear();
-        foreach (var ing in request.Recipe.Ingredients.OrderBy(i => i.SortOrder))
-        {
-          recipe.Ingredients.Add(new RecipeIngredient
+        _recipes.RemoveIngredients(oldIngredients);
+        var newIngredients = request.Recipe.Ingredients
+          .OrderBy(i => i.SortOrder)
+          .Select(ing => new RecipeIngredient
           {
             Id = Guid.NewGuid(),
+            RecipeId = recipe.Id,
             SortOrder = ing.SortOrder,
             Name = ing.Name.Trim(),
             Quantity = ing.Quantity,
             Unit = string.IsNullOrWhiteSpace(ing.Unit) ? null : ing.Unit.Trim(),
             Note = string.IsNullOrWhiteSpace(ing.Note) ? null : ing.Note.Trim()
-          });
-        }
+          })
+          .ToList();
+        _recipes.AddIngredients(newIngredients);
 
+        var oldSteps = recipe.Steps.ToList();
         recipe.Steps.Clear();
-        foreach (var step in request.Recipe.Steps.OrderBy(s => s.SortOrder))
-        {
-          recipe.Steps.Add(new RecipeStep
+        _recipes.RemoveSteps(oldSteps);
+        var newSteps = request.Recipe.Steps
+          .OrderBy(s => s.SortOrder)
+          .Select(step => new RecipeStep
           {
             Id = Guid.NewGuid(),
+            RecipeId = recipe.Id,
             SortOrder = step.SortOrder,
             Instruction = step.Instruction.Trim()
-          });
-        }
+          })
+          .ToList();
+        _recipes.AddSteps(newSteps);
 
+        var oldTags = recipe.Tags.ToList();
         recipe.Tags.Clear();
-        foreach (var tag in request.Recipe.Tags.Where(t => !string.IsNullOrWhiteSpace(t)).Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-          recipe.Tags.Add(new RecipeTag
+        _recipes.RemoveTags(oldTags);
+        var newTags = request.Recipe.Tags
+          .Where(t => !string.IsNullOrWhiteSpace(t))
+          .Distinct(StringComparer.OrdinalIgnoreCase)
+          .Select(tag => new RecipeTag
           {
             Id = Guid.NewGuid(),
+            RecipeId = recipe.Id,
             TagName = tag.Trim()
-          });
-        }
+          })
+          .ToList();
+        _recipes.AddTags(newTags);
 
         var ok = await _unitOfWork.SaveChangesAsync(cancellationToken) > 0;
         if (!ok) return Result<Unit>.Failure("Failed to update recipe");

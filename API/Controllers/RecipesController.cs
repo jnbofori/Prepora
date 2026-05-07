@@ -26,10 +26,7 @@ namespace API.Controllers
     [HttpPost]
     public async Task<IActionResult> Create(RecipeUpsertDto recipe)
     {
-      var result = await Mediator.Send(new RecipeCommands.Create.Command { Recipe = recipe });
-      if (result == null) return NotFound();
-      if (!result.IsSuccess) return BadRequest(result.Error);
-      return Ok(result.Value);
+      return HandleResult(await Mediator.Send(new RecipeCommands.Create.Command { Recipe = recipe }));
     }
 
     [Authorize(Policy = "IsRecipeOwner")]
@@ -50,10 +47,7 @@ namespace API.Controllers
     [HttpPost("{id:guid}/duplicate")]
     public async Task<IActionResult> Duplicate(Guid id)
     {
-      var result = await Mediator.Send(new RecipeCommands.Duplicate.Command { Id = id });
-      if (result == null) return NotFound();
-      if (!result.IsSuccess) return BadRequest(result.Error);
-      return Ok(result.Value);
+      return HandleResult(await Mediator.Send(new RecipeCommands.Duplicate.Command { Id = id }));
     }
 
     [HttpPost("import")]

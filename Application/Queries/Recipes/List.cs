@@ -2,7 +2,7 @@ using Application.Core;
 using Application.DTOs.Recipes;
 using Application.Interfaces;
 using AutoMapper;
-using Domain;
+using AutoMapper.QueryableExtensions;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Persistence;
@@ -33,11 +33,9 @@ namespace Application.Queries.Recipes
       {
         var ownerId = _userAccessor.GetUserId();
 
-        IQueryable<Recipe> query = _context.Recipes
+        var query = _context.Recipes
           .AsNoTracking()
-          .Where(r => r.OwnerId == ownerId)
-          .Include(r => r.Tags)
-          .Include(r => r.Photos);
+          .Where(r => r.OwnerId == ownerId);
 
         var search = request.Params.Search?.Trim();
         if (!string.IsNullOrEmpty(search))
@@ -55,17 +53,13 @@ namespace Application.Queries.Recipes
           query = query.Where(r => r.Tags.Any(t => t.TagName.ToLower() == tagLower));
         }
 
-        query = query.OrderByDescending(r => r.UpdatedUtc);
+        var projectedQuery = query
+          .OrderByDescending(r => r.UpdatedUtc)
+          .ProjectTo<RecipeListDto>(_mapper.ConfigurationProvider);
 
-        var count = await query.CountAsync(cancellationToken);
-        var items = await query
-          .Skip((request.Params.PageNumber - 1) * request.Params.PageSize)
-          .Take(request.Params.PageSize)
-          .ToListAsync(cancellationToken);
-        var dtos = _mapper.Map<List<RecipeListDto>>(items);
-        var paged = new PagedList<RecipeListDto>(dtos, count, request.Params.PageNumber, request.Params.PageSize);
-
-        return Result<PagedList<RecipeListDto>>.Success(paged);
+        return Result<PagedList<RecipeListDto>>.Success(
+          await PagedList<RecipeListDto>.CreateAsync(projectedQuery, request.Params.PageNumber, request.Params.PageSize)
+        );
       }
     }
   }

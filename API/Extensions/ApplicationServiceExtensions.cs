@@ -72,7 +72,8 @@ namespace API.Extensions
       {
         opt.AddPolicy("CorsPolicy", policy =>
             {
-            policy.AllowAnyMethod().AllowAnyHeader().AllowCredentials().WithOrigins("http://127.0.0.1:3000");
+            policy.AllowAnyMethod().AllowAnyHeader().AllowCredentials()
+              .WithOrigins("http://127.0.0.1:3000", "http://localhost:5173");
           });
       });
       // note: specified one of the handlers to let mediatr know where to look

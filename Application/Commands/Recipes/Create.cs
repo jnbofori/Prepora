@@ -11,7 +11,7 @@ namespace Application.Commands.Recipes
 {
   public class Create
   {
-    public class Command : IRequest<Result<Guid>>
+    public class Command : IRequest<Result<Unit>>
     {
       public RecipeUpsertDto Recipe { get; set; }
     }
@@ -24,7 +24,7 @@ namespace Application.Commands.Recipes
       }
     }
 
-    public class Handler : IRequestHandler<Command, Result<Guid>>
+    public class Handler : IRequestHandler<Command, Result<Unit>>
     {
       private readonly IRecipeRepository _recipes;
       private readonly IUnitOfWork _unitOfWork;
@@ -37,11 +37,11 @@ namespace Application.Commands.Recipes
         _userAccessor = userAccessor;
       }
 
-      public async Task<Result<Guid>> Handle(Command request, CancellationToken cancellationToken)
+      public async Task<Result<Unit>> Handle(Command request, CancellationToken cancellationToken)
       {
         var ownerId = _userAccessor.GetUserId();
         if (string.IsNullOrEmpty(ownerId))
-          return Result<Guid>.Failure("User not found");
+          return Result<Unit>.Failure("User not found");
 
         var now = DateTime.UtcNow;
         var recipe = new Recipe
@@ -94,9 +94,9 @@ namespace Application.Commands.Recipes
         _recipes.Add(recipe);
 
         var ok = await _unitOfWork.SaveChangesAsync(cancellationToken) > 0;
-        if (!ok) return Result<Guid>.Failure("Failed to create recipe");
+        if (!ok) return Result<Unit>.Failure("Failed to create recipe");
 
-        return Result<Guid>.Success(recipe.Id);
+        return Result<Unit>.Success(Unit.Value);
       }
     }
   }
