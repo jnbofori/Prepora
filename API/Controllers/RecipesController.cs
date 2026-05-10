@@ -65,6 +65,13 @@ namespace API.Controllers
     }
 
     [Authorize(Policy = "IsRecipeOwner")]
+    [HttpPost("{id:guid}/photos/batch")]
+    public async Task<IActionResult> AddPhotos(Guid id, [FromForm] List<IFormFile> files)
+    {
+      return HandleResult(await Mediator.Send(new RecipePhotoCommands.AddMany.Command { RecipeId = id, Files = files }));
+    }
+
+    [Authorize(Policy = "IsRecipeOwner")]
     [HttpDelete("{id:guid}/photos/{photoId}")]
     public async Task<IActionResult> DeletePhoto(Guid id, string photoId)
     {

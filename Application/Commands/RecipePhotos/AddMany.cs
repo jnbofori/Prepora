@@ -1,6 +1,4 @@
-using System.Linq;
 using Application.Core;
-using Application.DTOs.Recipes;
 using Application.Interfaces;
 using Domain;
 using Domain.Repositories;
@@ -9,12 +7,12 @@ using Microsoft.AspNetCore.Http;
 
 namespace Application.Commands.RecipePhotos
 {
-  public class Add
+  public class AddMany
   {
     public class Command : IRequest<Result<Unit>>
     {
       public Guid RecipeId { get; set; }
-      public IFormFile File { get; set; }
+      public ICollection<IFormFile> Files { get; set; } = new List<IFormFile>();
     }
 
     public class Handler : IRequestHandler<Command, Result<Unit>>
@@ -42,20 +40,30 @@ namespace Application.Commands.RecipePhotos
         var recipe = await _recipes.GetByIdForOwnerAsync(request.RecipeId, ownerId, cancellationToken);
         if (recipe == null) return null;
 
-        var upload = await _photoAccessor.AddPhoto(request.File);
-        var maxOrder = recipe.Photos.Count > 0 ? recipe.Photos.Max(p => p.SortOrder) : -1;
-        var photo = new RecipePhoto
-        {
-          Id = upload.PublicId,
-          Url = upload.Url,
-          SortOrder = maxOrder + 1,
-          IsCover = !recipe.Photos.Any(p => p.IsCover)
-        };
+        var files = request.Files.Where(f => f != null && f.Length > 0).ToList();
+        if (!files.Any()) return Result<Unit>.Failure("At least one photo is required");
 
-        recipe.Photos.Add(photo);
+        var nextSortOrder = recipe.Photos.Count > 0 ? recipe.Photos.Max(p => p.SortOrder) + 1 : 0;
+        var shouldSetCover = !recipe.Photos.Any(p => p.IsCover);
+
+        foreach (var file in files)
+        {
+          var upload = await _photoAccessor.AddPhoto(file);
+          if (upload == null) return Result<Unit>.Failure("Failed to upload photo");
+
+          recipe.Photos.Add(new RecipePhoto
+          {
+            Id = upload.PublicId,
+            Url = upload.Url,
+            SortOrder = nextSortOrder++,
+            IsCover = shouldSetCover
+          });
+
+          shouldSetCover = false;
+        }
 
         var ok = await _unitOfWork.SaveChangesAsync(cancellationToken) > 0;
-        if (!ok) return Result<Unit>.Failure("Failed to save photo");
+        if (!ok) return Result<Unit>.Failure("Failed to save photos");
 
         return Result<Unit>.Success(Unit.Value);
       }
