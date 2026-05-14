@@ -29,12 +29,18 @@ namespace Application.Commands.Recipes
       private readonly IRecipeRepository _recipes;
       private readonly IUnitOfWork _unitOfWork;
       private readonly IUserAccessor _userAccessor;
+      private readonly INutritionService _nutritionService;
 
-      public Handler(IRecipeRepository recipes, IUnitOfWork unitOfWork, IUserAccessor userAccessor)
+      public Handler(
+        IRecipeRepository recipes,
+        IUnitOfWork unitOfWork,
+        IUserAccessor userAccessor,
+        INutritionService nutritionService)
       {
         _recipes = recipes;
         _unitOfWork = unitOfWork;
         _userAccessor = userAccessor;
+        _nutritionService = nutritionService;
       }
 
       public async Task<Result<Unit>> Handle(Command request, CancellationToken cancellationToken)
@@ -90,6 +96,9 @@ namespace Application.Commands.Recipes
             TagName = tag.Trim()
           });
         }
+
+        var nutrition = await _nutritionService.CalculateRecipeAsync(recipe.Ingredients, recipe.Servings, cancellationToken);
+        RecipeNutritionUpdater.Apply(recipe, nutrition);
 
         _recipes.Add(recipe);
 

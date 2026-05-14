@@ -45,7 +45,16 @@ namespace Application.Commands.Recipes
           TotalMinutes = source.TotalMinutes,
           Servings = source.Servings,
           CreatedUtc = now,
-          UpdatedUtc = now
+          UpdatedUtc = now,
+          Calories = source.Calories,
+          ProteinGrams = source.ProteinGrams,
+          CarbsGrams = source.CarbsGrams,
+          FatGrams = source.FatGrams,
+          CaloriesPerServing = source.CaloriesPerServing,
+          ProteinGramsPerServing = source.ProteinGramsPerServing,
+          CarbsGramsPerServing = source.CarbsGramsPerServing,
+          FatGramsPerServing = source.FatGramsPerServing,
+          NutritionCalculatedUtc = source.NutritionCalculatedUtc
         };
 
         foreach (var ing in source.Ingredients.OrderBy(i => i.SortOrder))
@@ -57,7 +66,11 @@ namespace Application.Commands.Recipes
             Name = ing.Name,
             Quantity = ing.Quantity,
             Unit = ing.Unit,
-            Note = ing.Note
+            Note = ing.Note,
+            Calories = ing.Calories,
+            ProteinGrams = ing.ProteinGrams,
+            CarbsGrams = ing.CarbsGrams,
+            FatGrams = ing.FatGrams
           });
         }
 

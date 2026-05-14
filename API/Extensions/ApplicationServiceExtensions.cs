@@ -10,6 +10,7 @@ using Application.Interfaces;
 using Infrastructure.Security;
 using Infrastructure.Photos;
 using Infrastructure.Recipes;
+using Infrastructure.Nutrition;
 
 namespace API.Extensions
 {
@@ -92,6 +93,15 @@ namespace API.Extensions
         client.Timeout = TimeSpan.FromSeconds(20);
       });
       services.AddScoped<IRecipeImportService, RecipeImportService>();
+
+      services.Configure<FoodDataCentralSettings>(config.GetSection("FoodDataCentral"));
+      services.AddHttpClient("FoodDataCentral", client =>
+      {
+        var baseUrl = config["FoodDataCentral:BaseUrl"] ?? "https://api.nal.usda.gov/fdc/v1";
+        client.BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/");
+        client.Timeout = TimeSpan.FromSeconds(20);
+      });
+      services.AddScoped<INutritionService, UsdaNutritionService>();
 
       services.Configure<CloudinarySettings>(config.GetSection("Cloudinary"));
 
