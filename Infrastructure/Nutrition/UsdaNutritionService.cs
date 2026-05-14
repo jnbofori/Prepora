@@ -12,26 +12,6 @@ namespace Infrastructure.Nutrition
     private const int SearchPageSize = 25;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private static readonly Dictionary<string, decimal> GramConversions = new(StringComparer.OrdinalIgnoreCase)
-    {
-      ["g"] = 1,
-      ["gram"] = 1,
-      ["grams"] = 1,
-      ["kg"] = 1000,
-      ["kilogram"] = 1000,
-      ["kilograms"] = 1000,
-      ["mg"] = 0.001m,
-      ["milligram"] = 0.001m,
-      ["milligrams"] = 0.001m,
-      ["oz"] = 28.3495m,
-      ["ounce"] = 28.3495m,
-      ["ounces"] = 28.3495m,
-      ["lb"] = 453.592m,
-      ["lbs"] = 453.592m,
-      ["pound"] = 453.592m,
-      ["pounds"] = 453.592m
-    };
-
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly FoodDataCentralSettings _settings;
 
@@ -272,9 +252,8 @@ namespace Infrastructure.Nutrition
       var unit = ingredient.Unit?.Trim();
 
       if (string.IsNullOrWhiteSpace(unit)) return null;
-      if (GramConversions.TryGetValue(unit, out var gramsPerUnit)){
+      if (TryGetGramsPerUnit(unit, out var gramsPerUnit))
         return quantity * gramsPerUnit;
-      }
 
       var portion = FindMatchingPortion(food.FoodPortions, unit);
       if (portion?.GramWeight == null) return null;
@@ -283,6 +262,14 @@ namespace Infrastructure.Nutrition
       if (portionAmount <= 0) portionAmount = 1;
 
       return quantity / portionAmount * portion.GramWeight.Value;
+    }
+
+    private static bool TryGetGramsPerUnit(string unit, out decimal gramsPerUnit)
+    {
+      var trimmed = unit.Trim();
+      if (IngredientGramConversions.ByUnit.TryGetValue(trimmed, out gramsPerUnit))
+        return true;
+      return IngredientGramConversions.ByUnit.TryGetValue(NormalizeUnit(trimmed), out gramsPerUnit);
     }
 
     private static FoodPortion FindMatchingPortion(IEnumerable<FoodPortion> portions, string unit)
