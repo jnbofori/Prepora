@@ -12,20 +12,6 @@ namespace Infrastructure.Nutrition
     private const int SearchPageSize = 25;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
-    private static readonly Dictionary<string, string> IngredientExpansionMap = new(StringComparer.OrdinalIgnoreCase)
-    {
-      ["chicken"] = "chicken breast raw",
-      ["beef"] = "ground beef raw",
-      ["pork"] = "pork loin raw",
-      ["salmon"] = "salmon raw",
-      ["egg"] = "egg whole raw",
-      ["eggs"] = "egg whole raw",
-      ["milk"] = "whole milk",
-      ["butter"] = "butter unsalted",
-      ["flour"] = "all purpose flour",
-      ["rice"] = "white rice uncooked",
-    };
-
     private static readonly Dictionary<string, decimal> GramConversions = new(StringComparer.OrdinalIgnoreCase)
     {
       ["g"] = 1,
@@ -246,10 +232,10 @@ namespace Infrastructure.Nutrition
       var trimmed = name.Trim();
       var lower = trimmed.ToLowerInvariant();
 
-      if (IngredientExpansionMap.TryGetValue(lower, out var mapped)) return mapped;
+      if (IngredientSearchExpansionMap.Entries.TryGetValue(lower, out var mapped)) return mapped;
 
       var firstWord = Regex.Split(lower, @"\W+").FirstOrDefault(s => s.Length > 0);
-      if (firstWord != null && IngredientExpansionMap.TryGetValue(firstWord, out mapped)) return mapped;
+      if (firstWord != null && IngredientSearchExpansionMap.Entries.TryGetValue(firstWord, out mapped)) return mapped;
 
       if (lower.EndsWith(" raw", StringComparison.Ordinal) || lower.EndsWith(" uncooked", StringComparison.Ordinal))
         return trimmed;
