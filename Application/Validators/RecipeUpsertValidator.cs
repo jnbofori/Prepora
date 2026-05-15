@@ -17,6 +17,15 @@ namespace Application.Validators
       RuleFor(x => x.CookMinutes).GreaterThanOrEqualTo(0).When(x => x.CookMinutes.HasValue);
       RuleFor(x => x.TotalMinutes).GreaterThanOrEqualTo(0).When(x => x.TotalMinutes.HasValue);
 
+      RuleFor(x => x.Calories).GreaterThanOrEqualTo(0).When(x => x.Calories.HasValue);
+      RuleFor(x => x.ProteinGrams).GreaterThanOrEqualTo(0).When(x => x.ProteinGrams.HasValue);
+      RuleFor(x => x.CarbsGrams).GreaterThanOrEqualTo(0).When(x => x.CarbsGrams.HasValue);
+      RuleFor(x => x.FatGrams).GreaterThanOrEqualTo(0).When(x => x.FatGrams.HasValue);
+      RuleFor(x => x.CaloriesPerServing).GreaterThanOrEqualTo(0).When(x => x.CaloriesPerServing.HasValue);
+      RuleFor(x => x.ProteinGramsPerServing).GreaterThanOrEqualTo(0).When(x => x.ProteinGramsPerServing.HasValue);
+      RuleFor(x => x.CarbsGramsPerServing).GreaterThanOrEqualTo(0).When(x => x.CarbsGramsPerServing.HasValue);
+      RuleFor(x => x.FatGramsPerServing).GreaterThanOrEqualTo(0).When(x => x.FatGramsPerServing.HasValue);
+
       RuleForEach(x => x.Ingredients).SetValidator(new RecipeUpsertIngredientValidator());
       RuleForEach(x => x.Steps).SetValidator(new RecipeUpsertStepValidator());
       RuleForEach(x => x.Tags).MaximumLength(100);
@@ -30,6 +39,10 @@ namespace Application.Validators
       RuleFor(x => x.Name).NotEmpty().MaximumLength(500);
       RuleFor(x => x.Unit).MaximumLength(100);
       RuleFor(x => x.Note).MaximumLength(500);
+      RuleFor(x => x.Calories).GreaterThanOrEqualTo(0).When(x => x.Calories.HasValue);
+      RuleFor(x => x.ProteinGrams).GreaterThanOrEqualTo(0).When(x => x.ProteinGrams.HasValue);
+      RuleFor(x => x.CarbsGrams).GreaterThanOrEqualTo(0).When(x => x.CarbsGrams.HasValue);
+      RuleFor(x => x.FatGrams).GreaterThanOrEqualTo(0).When(x => x.FatGrams.HasValue);
     }
   }
 

@@ -138,10 +138,10 @@ namespace Infrastructure.Nutrition
       var scale = grams.Value / 100m;
       return new IngredientNutrition
       {
-        Calories = GetEnergyKcalPer100g(details) * scale,
-        ProteinGrams = GetNutrientValue(details, "203", "Protein") * scale,
-        CarbsGrams = GetNutrientValue(details, "205", "Carbohydrate, by difference") * scale,
-        FatGrams = GetNutrientValue(details, "204", "Total lipid (fat)") * scale
+        Calories = NonNegative(GetEnergyKcalPer100g(details) * scale),
+        ProteinGrams = NonNegative(GetNutrientValue(details, "203", "Protein") * scale),
+        CarbsGrams = NonNegative(GetNutrientValue(details, "205", "Carbohydrate, by difference") * scale),
+        FatGrams = NonNegative(GetNutrientValue(details, "204", "Total lipid (fat)") * scale)
       };
     }
 
@@ -331,6 +331,8 @@ namespace Infrastructure.Nutrition
         : _settings.ApiKey;
 
     private static decimal Round(decimal value) => Math.Round(value, 2);
+
+    private static decimal NonNegative(decimal value) => value < 0 ? 0 : value;
 
     private class IngredientNutrition
     {

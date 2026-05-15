@@ -97,8 +97,16 @@ namespace Application.Commands.Recipes
           });
         }
 
-        var nutrition = await _nutritionService.CalculateRecipeAsync(recipe.Ingredients, recipe.Servings, cancellationToken);
-        RecipeNutritionUpdater.Apply(recipe, nutrition);
+        if (request.Recipe.HasAnyNutritionProvided())
+        {
+          RecipeNutritionUpdater.ApplyManual(recipe, request.Recipe);
+          RecipeNutritionUpdater.ApplyManualIngredientLines(recipe.Ingredients, request.Recipe);
+        }
+        else
+        {
+          var nutrition = await _nutritionService.CalculateRecipeAsync(recipe.Ingredients, recipe.Servings, cancellationToken);
+          RecipeNutritionUpdater.Apply(recipe, nutrition);
+        }
 
         _recipes.Add(recipe);
 

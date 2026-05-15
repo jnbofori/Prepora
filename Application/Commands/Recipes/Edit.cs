@@ -107,8 +107,16 @@ namespace Application.Commands.Recipes
           .ToList();
         _recipes.AddTags(newTags);
 
-        var nutrition = await _nutritionService.CalculateRecipeAsync(newIngredients, recipe.Servings, cancellationToken);
-        RecipeNutritionUpdater.Apply(recipe, nutrition, newIngredients);
+        if (request.Recipe.HasAnyNutritionProvided())
+        {
+          RecipeNutritionUpdater.ApplyManual(recipe, request.Recipe);
+          RecipeNutritionUpdater.ApplyManualIngredientLines(newIngredients, request.Recipe);
+        }
+        else
+        {
+          var nutrition = await _nutritionService.CalculateRecipeAsync(newIngredients, recipe.Servings, cancellationToken);
+          RecipeNutritionUpdater.Apply(recipe, nutrition, newIngredients);
+        }
 
         var ok = await _unitOfWork.SaveChangesAsync(cancellationToken) > 0;
         if (!ok) return Result<Unit>.Failure("Failed to update recipe");
