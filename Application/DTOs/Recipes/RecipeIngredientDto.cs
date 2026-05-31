@@ -7,6 +7,7 @@ namespace Application.DTOs.Recipes
     public string Name { get; set; }
     public decimal? Quantity { get; set; }
     public string Unit { get; set; }
+    public string Size { get; set; }
     public string Note { get; set; }
 
     public decimal? Calories { get; set; }

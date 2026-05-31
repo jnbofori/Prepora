@@ -66,6 +66,7 @@ namespace Application.Commands.Recipes
             Name = ing.Name,
             Quantity = ing.Quantity,
             Unit = ing.Unit,
+            Size = ing.Size,
             Note = ing.Note,
             Calories = ing.Calories,
             ProteinGrams = ing.ProteinGrams,

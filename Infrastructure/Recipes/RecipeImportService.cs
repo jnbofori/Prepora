@@ -66,6 +66,19 @@ namespace Infrastructure.Recipes
       ["whole"] = "whole"
     };
 
+    private static readonly (string Token, string Canonical)[] IngredientSizes =
+    {
+      ("extra large", "large"),
+      ("extra-large", "large"),
+      ("x-large", "large"),
+      ("xlarge", "large"),
+      ("jumbo", "large"),
+      ("small", "small"),
+      ("medium", "medium"),
+      ("large", "large"),
+      ("xl", "large")
+    };
+
     public RecipeImportService(IHttpClientFactory httpClientFactory)
     {
       _httpClientFactory = httpClientFactory;
@@ -403,6 +416,25 @@ namespace Infrastructure.Recipes
 
     private static decimal ParseDecimal(string value) =>
       decimal.Parse(value, NumberStyles.Number, CultureInfo.InvariantCulture);
+
+    private static bool TryReadSize(string text, out string size, out int length)
+    {
+      size = null;
+      length = 0;
+      if (string.IsNullOrWhiteSpace(text)) return false;
+
+      foreach (var (token, canonical) in IngredientSizes)
+      {
+        if (!text.StartsWith(token, StringComparison.OrdinalIgnoreCase)) continue;
+        if (text.Length > token.Length && char.IsLetter(text[token.Length])) continue;
+
+        size = canonical;
+        length = token.Length;
+        return true;
+      }
+
+      return false;
+    }
 
     private static bool TryReadUnit(string text, out string unit, out int length)
     {

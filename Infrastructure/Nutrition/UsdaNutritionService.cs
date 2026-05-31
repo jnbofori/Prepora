@@ -115,26 +115,34 @@ namespace Infrastructure.Nutrition
       CancellationToken cancellationToken)
     {
       var primaryQuery = BuildIngredientSearchQuery(ingredient);
+      Console.WriteLine($"Primary query: {primaryQuery}");
       var food = await SearchBestFoodAsync(primaryQuery, apiKey, cancellationToken);
+      Console.WriteLine($"Food: {JsonSerializer.Serialize(food, new JsonSerializerOptions { WriteIndented = true })}");
 
       if (food == null && !string.IsNullOrWhiteSpace(ingredient.Name))
       {
         var unexpanded = BuildSearchQueryUnexpanded(ingredient);
+        Console.WriteLine($"Unexpanded: {unexpanded}");
+
         if (!string.IsNullOrWhiteSpace(unexpanded)
             && !string.Equals(unexpanded, primaryQuery, StringComparison.Ordinal))
           food = await SearchBestFoodAsync(unexpanded, apiKey, cancellationToken);
+        Console.WriteLine($"Food from unexpanded: {JsonSerializer.Serialize(food, new JsonSerializerOptions { WriteIndented = true })}");
       }
 
-      if (food == null && !string.IsNullOrWhiteSpace(ingredient.Name))
-        food = await SearchBestFoodAsync(ingredient.Name.Trim(), apiKey, cancellationToken);
+      // No point in searching here again. This is the same as unexpanded.
+      // if (food == null && !string.IsNullOrWhiteSpace(ingredient.Name))
+      //   food = await SearchBestFoodAsync(ingredient.Name.Trim(), apiKey, cancellationToken);
       if (food == null) return null;
 
       var details = await GetFoodDetailsAsync(food.FdcId, apiKey, cancellationToken);
       if (details == null) return null;
 
       var grams = ResolveGrams(ingredient, details);
+      Console.WriteLine($"Grams: {grams}");
       if (!grams.HasValue || grams <= 0) return null;
 
+      // USDA nutrient values are treated as per 100g of the food item
       var scale = grams.Value / 100m;
       return new IngredientNutrition
       {
@@ -168,6 +176,8 @@ namespace Infrastructure.Nutrition
       var score = (decimal)(item.Score ?? 0);
       var desc = item.Description ?? string.Empty;
       var descLower = desc.ToLowerInvariant();
+      Console.WriteLine($"Scoring Food item: {JsonSerializer.Serialize(item, new JsonSerializerOptions { WriteIndented = true })}");
+      Console.WriteLine($"Description: {descLower}");
       var dataType = item.DataType ?? string.Empty;
 
       if (string.Equals(dataType, "Foundation", StringComparison.OrdinalIgnoreCase))
@@ -196,6 +206,7 @@ namespace Infrastructure.Nutrition
           && (descLower.Contains("cooked") || descLower.Contains("roasted") || descLower.Contains("fried")))
         score -= 25;
 
+      Console.WriteLine($"Score: {score}");
       return score;
     }
 
@@ -211,7 +222,7 @@ namespace Infrastructure.Nutrition
       if (string.IsNullOrWhiteSpace(name)) return name;
       var trimmed = name.Trim();
       var lower = trimmed.ToLowerInvariant();
-
+      Console.WriteLine($"Lower: {lower}");
       if (IngredientSearchExpansionMap.Entries.TryGetValue(lower, out var mapped)) return mapped;
 
       var firstWord = Regex.Split(lower, @"\W+").FirstOrDefault(s => s.Length > 0);
@@ -247,21 +258,98 @@ namespace Infrastructure.Nutrition
 
     private static decimal? ResolveGrams(RecipeIngredient ingredient, FoodDetails food)
     {
+      Console.WriteLine($"Resolving grams for ingredient: {JsonSerializer.Serialize(ingredient, new JsonSerializerOptions { WriteIndented = true })}");
       if (!ingredient.Quantity.HasValue) return null;
       var quantity = ingredient.Quantity.Value;
       var unit = ingredient.Unit?.Trim();
+      var size = ingredient.Size?.Trim();
 
-      if (string.IsNullOrWhiteSpace(unit)) return null;
-      if (TryGetGramsPerUnit(unit, out var gramsPerUnit))
+      if (!string.IsNullOrWhiteSpace(unit) && TryGetGramsPerUnit(unit, out var gramsPerUnit)){
+        Console.WriteLine($"Grams per unit: {gramsPerUnit}");
         return quantity * gramsPerUnit;
+      }
 
-      var portion = FindMatchingPortion(food.FoodPortions, unit);
+      var portion = FindBestPortion(food.FoodPortions, unit, size);
+      Console.WriteLine($"Found best portion: {JsonSerializer.Serialize(portion, new JsonSerializerOptions { WriteIndented = true })}");
       if (portion?.GramWeight == null) return null;
 
       var portionAmount = portion.Amount.GetValueOrDefault(1);
       if (portionAmount <= 0) portionAmount = 1;
 
-      return quantity / portionAmount * portion.GramWeight.Value;
+      return (quantity / portionAmount) * portion.GramWeight.Value;
+    }
+
+    private static FoodPortion FindBestPortion(IEnumerable<FoodPortion> portions, string unit, string size)
+    {
+      Console.WriteLine($"Finding best portion {JsonSerializer.Serialize(portions, new JsonSerializerOptions { WriteIndented = true })}");
+      if (portions == null) return null;
+
+      var hasUnit = !string.IsNullOrWhiteSpace(unit);
+      var hasSize = !string.IsNullOrWhiteSpace(size);
+
+      if (hasUnit && hasSize)
+      {
+        var combined = FindMatchingPortion(portions, unit, size);
+        if (combined != null) return combined;
+      }
+
+      if (hasSize)
+      {
+        var bySize = FindMatchingPortionBySize(portions, size);
+        if (bySize != null) return bySize;
+      }
+
+      if (hasUnit)
+        return FindMatchingPortion(portions, unit);
+
+      return null;
+    }
+
+    private static FoodPortion FindMatchingPortionBySize(IEnumerable<FoodPortion> portions, string size)
+    {
+      var normalizedSize = NormalizeUnit(size);
+      return portions?
+        .Where(p => !string.IsNullOrWhiteSpace(p.Modifier) && PortionModifierMatchesSize(p.Modifier, normalizedSize))
+        .OrderByDescending(p => ScoreSizePortionMatch(p.Modifier, normalizedSize))
+        .FirstOrDefault();
+    }
+
+    private static bool PortionModifierMatchesSize(string modifier, string normalizedSize)
+    {
+      var normalizedModifier = modifier.Trim().ToLowerInvariant();
+      if (normalizedModifier == normalizedSize) return true;
+      if (normalizedModifier.StartsWith(normalizedSize + " ", StringComparison.Ordinal)) return true;
+      if (normalizedModifier.StartsWith(normalizedSize + "(", StringComparison.Ordinal)) return true;
+      return false;
+    }
+
+    private static int ScoreSizePortionMatch(string modifier, string normalizedSize)
+    {
+      var normalizedModifier = modifier.Trim().ToLowerInvariant();
+      if (normalizedModifier == normalizedSize) return 100;
+      if (normalizedModifier.StartsWith(normalizedSize + " ", StringComparison.Ordinal)) return 80;
+      if (normalizedModifier.StartsWith(normalizedSize + "(", StringComparison.Ordinal)) return 70;
+      return 0;
+    }
+
+    private static FoodPortion FindMatchingPortion(IEnumerable<FoodPortion> portions, string unit, string size = null)
+    {
+      var normalizedUnit = NormalizeUnit(unit);
+      var normalizedSize = string.IsNullOrWhiteSpace(size) ? null : NormalizeUnit(size);
+      Console.WriteLine($"Finding matching portion. Normalized unit: {normalizedUnit}, normalized size: {normalizedSize}");
+
+      return portions?.FirstOrDefault(p =>
+      {
+        if (normalizedSize != null
+            && !string.IsNullOrWhiteSpace(p.Modifier)
+            && !PortionModifierMatchesSize(p.Modifier, normalizedSize))
+          return false;
+
+        return UnitMatches(p.MeasureUnit?.Name, normalizedUnit)
+          || UnitMatches(p.MeasureUnit?.Abbreviation, normalizedUnit)
+          || UnitMatches(p.Modifier, normalizedUnit)
+          || UnitMatches(p.PortionDescription, normalizedUnit);
+      });
     }
 
     private static bool TryGetGramsPerUnit(string unit, out decimal gramsPerUnit)
@@ -270,16 +358,6 @@ namespace Infrastructure.Nutrition
       if (IngredientGramConversions.ByUnit.TryGetValue(trimmed, out gramsPerUnit))
         return true;
       return IngredientGramConversions.ByUnit.TryGetValue(NormalizeUnit(trimmed), out gramsPerUnit);
-    }
-
-    private static FoodPortion FindMatchingPortion(IEnumerable<FoodPortion> portions, string unit)
-    {
-      var normalizedUnit = NormalizeUnit(unit);
-      return portions?.FirstOrDefault(p =>
-        UnitMatches(p.MeasureUnit?.Name, normalizedUnit)
-        || UnitMatches(p.MeasureUnit?.Abbreviation, normalizedUnit)
-        || UnitMatches(p.Modifier, normalizedUnit)
-        || UnitMatches(p.PortionDescription, normalizedUnit));
     }
 
     private static bool UnitMatches(string value, string normalizedUnit)

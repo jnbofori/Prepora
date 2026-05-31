@@ -38,6 +38,7 @@ namespace Application.Commands.Recipes
             Name = i.Name.Trim(),
             Quantity = i.Quantity,
             Unit = string.IsNullOrWhiteSpace(i.Unit) ? null : i.Unit.Trim(),
+            Size = string.IsNullOrWhiteSpace(i.Size) ? null : i.Size.Trim(),
             Note = string.IsNullOrWhiteSpace(i.Note) ? null : i.Note.Trim()
           })
           .ToList() ?? new List<RecipeIngredient>();

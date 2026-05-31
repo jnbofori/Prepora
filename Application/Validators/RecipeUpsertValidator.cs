@@ -38,6 +38,7 @@ namespace Application.Validators
     {
       RuleFor(x => x.Name).NotEmpty().MaximumLength(500);
       RuleFor(x => x.Unit).MaximumLength(100);
+      RuleFor(x => x.Size).MaximumLength(50);
       RuleFor(x => x.Note).MaximumLength(500);
       RuleFor(x => x.Calories).GreaterThanOrEqualTo(0).When(x => x.Calories.HasValue);
       RuleFor(x => x.ProteinGrams).GreaterThanOrEqualTo(0).When(x => x.ProteinGrams.HasValue);

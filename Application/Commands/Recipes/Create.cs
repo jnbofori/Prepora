@@ -74,6 +74,7 @@ namespace Application.Commands.Recipes
             Name = ing.Name.Trim(),
             Quantity = ing.Quantity,
             Unit = string.IsNullOrWhiteSpace(ing.Unit) ? null : ing.Unit.Trim(),
+            Size = string.IsNullOrWhiteSpace(ing.Size) ? null : ing.Size.Trim(),
             Note = string.IsNullOrWhiteSpace(ing.Note) ? null : ing.Note.Trim()
           });
         }
