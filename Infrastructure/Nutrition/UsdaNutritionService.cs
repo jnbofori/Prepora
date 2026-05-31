@@ -9,7 +9,8 @@ namespace Infrastructure.Nutrition
 {
   public class UsdaNutritionService : INutritionService
   {
-    private const int SearchPageSize = 25;
+    private const int SearchPageSize = 10;
+    private const int MaxDetailAttemptsPerSearch = 5;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -114,61 +115,86 @@ namespace Infrastructure.Nutrition
       string apiKey,
       CancellationToken cancellationToken)
     {
-      var primaryQuery = BuildIngredientSearchQuery(ingredient);
-      Console.WriteLine($"Primary query: {primaryQuery}");
-      var food = await SearchBestFoodAsync(primaryQuery, apiKey, cancellationToken);
-      Console.WriteLine($"Food: {JsonSerializer.Serialize(food, new JsonSerializerOptions { WriteIndented = true })}");
+      var triedFdcIds = new HashSet<int>();
 
-      if (food == null && !string.IsNullOrWhiteSpace(ingredient.Name))
+      var expandedQuery = BuildIngredientSearchQuery(ingredient)?.Trim();
+      if (!string.IsNullOrWhiteSpace(expandedQuery))
       {
-        var unexpanded = BuildSearchQueryUnexpanded(ingredient);
-        Console.WriteLine($"Unexpanded: {unexpanded}");
-
-        if (!string.IsNullOrWhiteSpace(unexpanded)
-            && !string.Equals(unexpanded, primaryQuery, StringComparison.Ordinal))
-          food = await SearchBestFoodAsync(unexpanded, apiKey, cancellationToken);
-        Console.WriteLine($"Food from unexpanded: {JsonSerializer.Serialize(food, new JsonSerializerOptions { WriteIndented = true })}");
+        var candidates = await SearchRankedFoodsAsync(expandedQuery, apiKey, cancellationToken);
+        // Some fdcIds for food items are obsolete and won't be found with /food/{fdcId}
+        // so we need to try to calculate from possible candidates
+        var nutrition = await TryCalculateFromCandidatesAsync(
+          ingredient, candidates, triedFdcIds, apiKey, cancellationToken);
+        if (nutrition != null) return nutrition;
       }
 
-      // No point in searching here again. This is the same as unexpanded.
-      // if (food == null && !string.IsNullOrWhiteSpace(ingredient.Name))
-      //   food = await SearchBestFoodAsync(ingredient.Name.Trim(), apiKey, cancellationToken);
-      if (food == null) return null;
-
-      var details = await GetFoodDetailsAsync(food.FdcId, apiKey, cancellationToken);
-      if (details == null) return null;
-
-      var grams = ResolveGrams(ingredient, details);
-      Console.WriteLine($"Grams: {grams}");
-      if (!grams.HasValue || grams <= 0) return null;
-
-      // USDA nutrient values are treated as per 100g of the food item
-      var scale = grams.Value / 100m;
-      return new IngredientNutrition
+      var unexpandedQuery = BuildSearchQueryUnexpanded(ingredient)?.Trim();
+      if (!string.IsNullOrWhiteSpace(unexpandedQuery)
+          && !string.Equals(unexpandedQuery, expandedQuery, StringComparison.OrdinalIgnoreCase))
       {
-        Calories = NonNegative(GetEnergyKcalPer100g(details) * scale),
-        ProteinGrams = NonNegative(GetNutrientValue(details, "203", "Protein") * scale),
-        CarbsGrams = NonNegative(GetNutrientValue(details, "205", "Carbohydrate, by difference") * scale),
-        FatGrams = NonNegative(GetNutrientValue(details, "204", "Total lipid (fat)") * scale)
-      };
+        var candidates = await SearchRankedFoodsAsync(unexpandedQuery, apiKey, cancellationToken);
+        var nutrition = await TryCalculateFromCandidatesAsync(
+          ingredient, candidates, triedFdcIds, apiKey, cancellationToken);
+        if (nutrition != null) return nutrition;
+      }
+
+      return null;
     }
 
-    private async Task<FoodSearchItem> SearchBestFoodAsync(string query, string apiKey, CancellationToken cancellationToken)
+    private async Task<IngredientNutrition> TryCalculateFromCandidatesAsync(
+      RecipeIngredient ingredient,
+      IReadOnlyList<FoodSearchItem> candidates,
+      HashSet<int> triedFdcIds,
+      string apiKey,
+      CancellationToken cancellationToken)
     {
-      if (string.IsNullOrWhiteSpace(query)) return null;
+      if (candidates == null || candidates.Count == 0) return null;
+
+      var attempts = 0;
+      foreach (var candidate in candidates)
+      {
+        if (attempts >= MaxDetailAttemptsPerSearch) break;
+        if (!triedFdcIds.Add(candidate.FdcId)) continue;
+        attempts++;
+
+        var details = await GetFoodDetailsAsync(candidate.FdcId, apiKey, cancellationToken);
+        if (details == null) continue;
+
+        var grams = ResolveGrams(ingredient, details);
+        if (!grams.HasValue || grams <= 0) continue;
+
+        var scale = grams.Value / 100m;
+        return new IngredientNutrition
+        {
+          Calories = NonNegative(GetEnergyKcalPer100g(details) * scale),
+          ProteinGrams = NonNegative(GetNutrientValue(details, "203", "Protein") * scale),
+          CarbsGrams = NonNegative(GetNutrientValue(details, "205", "Carbohydrate, by difference") * scale),
+          FatGrams = NonNegative(GetNutrientValue(details, "204", "Total lipid (fat)") * scale)
+        };
+      }
+
+      return null;
+    }
+
+    private async Task<IReadOnlyList<FoodSearchItem>> SearchRankedFoodsAsync(
+      string query,
+      string apiKey,
+      CancellationToken cancellationToken)
+    {
+      if (string.IsNullOrWhiteSpace(query)) return Array.Empty<FoodSearchItem>();
 
       var url =
         $"foods/search?query={Uri.EscapeDataString(query)}&pageSize={SearchPageSize}&dataType=Foundation,SR Legacy&api_key={Uri.EscapeDataString(apiKey)}";
       var response = await GetJsonAsync<FoodSearchResponse>(url, cancellationToken);
 
       var foods = response?.Foods;
-      if (foods == null || foods.Count == 0) return null;
+      if (foods == null || foods.Count == 0) return Array.Empty<FoodSearchItem>();
 
       return foods
         .Select(f => (Item: f, Score: ScoreSearchCandidate(f, query)))
         .OrderByDescending(x => x.Score)
-        .First()
-        .Item;
+        .Select(x => x.Item)
+        .ToList();
     }
 
     private static decimal ScoreSearchCandidate(FoodSearchItem item, string searchQuery)
@@ -176,12 +202,14 @@ namespace Infrastructure.Nutrition
       var score = (decimal)(item.Score ?? 0);
       var desc = item.Description ?? string.Empty;
       var descLower = desc.ToLowerInvariant();
-      Console.WriteLine($"Scoring Food item: {JsonSerializer.Serialize(item, new JsonSerializerOptions { WriteIndented = true })}");
-      Console.WriteLine($"Description: {descLower}");
       var dataType = item.DataType ?? string.Empty;
 
       if (string.Equals(dataType, "Foundation", StringComparison.OrdinalIgnoreCase))
+      {
         score += 80;
+        if (item.PublishedDate.HasValue && item.PublishedDate.Value < DateTime.UtcNow.AddYears(-3))
+          score -= 60;
+      }
       else if (string.Equals(dataType, "SR Legacy", StringComparison.OrdinalIgnoreCase))
         score += 40;
       else if (string.Equals(dataType, "Survey (FNDDS)", StringComparison.OrdinalIgnoreCase))
@@ -206,7 +234,6 @@ namespace Infrastructure.Nutrition
           && (descLower.Contains("cooked") || descLower.Contains("roasted") || descLower.Contains("fried")))
         score -= 25;
 
-      Console.WriteLine($"Score: {score}");
       return score;
     }
 
@@ -222,20 +249,19 @@ namespace Infrastructure.Nutrition
       if (string.IsNullOrWhiteSpace(name)) return name;
       var trimmed = name.Trim();
       var lower = trimmed.ToLowerInvariant();
-      Console.WriteLine($"Lower: {lower}");
       if (IngredientSearchExpansionMap.Entries.TryGetValue(lower, out var mapped)) return mapped;
 
       var firstWord = Regex.Split(lower, @"\W+").FirstOrDefault(s => s.Length > 0);
       if (firstWord != null && IngredientSearchExpansionMap.Entries.TryGetValue(firstWord, out mapped)) return mapped;
 
       if (lower.EndsWith(" raw", StringComparison.Ordinal) || lower.EndsWith(" uncooked", StringComparison.Ordinal))
-        return trimmed;
+        return lower;
 
-      return $"{trimmed} raw";
+      return $"{lower} raw";
     }
 
     private static string BuildSearchQueryUnexpanded(RecipeIngredient ingredient) =>
-      string.IsNullOrWhiteSpace(ingredient.Name) ? null : ingredient.Name.Trim();
+      string.IsNullOrWhiteSpace(ingredient.Name) ? null : ingredient.Name.Trim().ToLowerInvariant();
 
     private async Task<FoodDetails> GetFoodDetailsAsync(int fdcId, string apiKey, CancellationToken cancellationToken)
     {
@@ -258,19 +284,16 @@ namespace Infrastructure.Nutrition
 
     private static decimal? ResolveGrams(RecipeIngredient ingredient, FoodDetails food)
     {
-      Console.WriteLine($"Resolving grams for ingredient: {JsonSerializer.Serialize(ingredient, new JsonSerializerOptions { WriteIndented = true })}");
       if (!ingredient.Quantity.HasValue) return null;
       var quantity = ingredient.Quantity.Value;
       var unit = ingredient.Unit?.Trim();
       var size = ingredient.Size?.Trim();
 
       if (!string.IsNullOrWhiteSpace(unit) && TryGetGramsPerUnit(unit, out var gramsPerUnit)){
-        Console.WriteLine($"Grams per unit: {gramsPerUnit}");
         return quantity * gramsPerUnit;
       }
 
       var portion = FindBestPortion(food.FoodPortions, unit, size);
-      Console.WriteLine($"Found best portion: {JsonSerializer.Serialize(portion, new JsonSerializerOptions { WriteIndented = true })}");
       if (portion?.GramWeight == null) return null;
 
       var portionAmount = portion.Amount.GetValueOrDefault(1);
@@ -281,7 +304,6 @@ namespace Infrastructure.Nutrition
 
     private static FoodPortion FindBestPortion(IEnumerable<FoodPortion> portions, string unit, string size)
     {
-      Console.WriteLine($"Finding best portion {JsonSerializer.Serialize(portions, new JsonSerializerOptions { WriteIndented = true })}");
       if (portions == null) return null;
 
       var hasUnit = !string.IsNullOrWhiteSpace(unit);
@@ -336,7 +358,6 @@ namespace Infrastructure.Nutrition
     {
       var normalizedUnit = NormalizeUnit(unit);
       var normalizedSize = string.IsNullOrWhiteSpace(size) ? null : NormalizeUnit(size);
-      Console.WriteLine($"Finding matching portion. Normalized unit: {normalizedUnit}, normalized size: {normalizedSize}");
 
       return portions?.FirstOrDefault(p =>
       {
@@ -431,6 +452,7 @@ namespace Infrastructure.Nutrition
       public string Description { get; set; }
       public string DataType { get; set; }
       public double? Score { get; set; }
+      public DateTime? PublishedDate { get; set; }
     }
 
     private class FoodDetails

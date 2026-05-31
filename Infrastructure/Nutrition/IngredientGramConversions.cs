@@ -62,6 +62,8 @@ namespace Infrastructure.Nutrition
       ["dash"] = 0.62m,
       ["stick"] = 113.398m,
       ["clove"] = 5m,
+      ["can"] = 425m,
+      ["cans"] = 425m,
     };
   }
 }
