@@ -75,7 +75,8 @@ namespace Application.Commands.Recipes
             Quantity = ing.Quantity,
             Unit = string.IsNullOrWhiteSpace(ing.Unit) ? null : ing.Unit.Trim(),
             Size = string.IsNullOrWhiteSpace(ing.Size) ? null : ing.Size.Trim(),
-            Note = string.IsNullOrWhiteSpace(ing.Note) ? null : ing.Note.Trim()
+            Note = string.IsNullOrWhiteSpace(ing.Note) ? null : ing.Note.Trim(),
+            Branded = ing.Branded
           });
         }
 

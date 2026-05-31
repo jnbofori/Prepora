@@ -116,11 +116,12 @@ namespace Infrastructure.Nutrition
       CancellationToken cancellationToken)
     {
       var triedFdcIds = new HashSet<int>();
+      var branded = ingredient.Branded;
 
       var expandedQuery = BuildIngredientSearchQuery(ingredient)?.Trim();
       if (!string.IsNullOrWhiteSpace(expandedQuery))
       {
-        var candidates = await SearchRankedFoodsAsync(expandedQuery, apiKey, cancellationToken);
+        var candidates = await SearchRankedFoodsAsync(expandedQuery, branded, apiKey, cancellationToken);
         // Some fdcIds for food items are obsolete and won't be found with /food/{fdcId}
         // so we need to try to calculate from possible candidates
         var nutrition = await TryCalculateFromCandidatesAsync(
@@ -128,11 +129,13 @@ namespace Infrastructure.Nutrition
         if (nutrition != null) return nutrition;
       }
 
+      if (branded) return null;
+
       var unexpandedQuery = BuildSearchQueryUnexpanded(ingredient)?.Trim();
       if (!string.IsNullOrWhiteSpace(unexpandedQuery)
           && !string.Equals(unexpandedQuery, expandedQuery, StringComparison.OrdinalIgnoreCase))
       {
-        var candidates = await SearchRankedFoodsAsync(unexpandedQuery, apiKey, cancellationToken);
+        var candidates = await SearchRankedFoodsAsync(unexpandedQuery, branded, apiKey, cancellationToken);
         var nutrition = await TryCalculateFromCandidatesAsync(
           ingredient, candidates, triedFdcIds, apiKey, cancellationToken);
         if (nutrition != null) return nutrition;
@@ -163,6 +166,9 @@ namespace Infrastructure.Nutrition
         var grams = ResolveGrams(ingredient, details);
         if (!grams.HasValue || grams <= 0) continue;
 
+        if (ingredient.Branded || IsBrandedFood(details))
+          return CalculateBrandedNutrition(details, grams.Value);
+
         var scale = grams.Value / 100m;
         return new IngredientNutrition
         {
@@ -178,26 +184,28 @@ namespace Infrastructure.Nutrition
 
     private async Task<IReadOnlyList<FoodSearchItem>> SearchRankedFoodsAsync(
       string query,
+      bool branded,
       string apiKey,
       CancellationToken cancellationToken)
     {
       if (string.IsNullOrWhiteSpace(query)) return Array.Empty<FoodSearchItem>();
 
+      var dataType = branded ? "Branded" : "Foundation,SR Legacy";
       var url =
-        $"foods/search?query={Uri.EscapeDataString(query)}&pageSize={SearchPageSize}&dataType=Foundation,SR Legacy&api_key={Uri.EscapeDataString(apiKey)}";
+        $"foods/search?query={Uri.EscapeDataString(query)}&pageSize={SearchPageSize}&dataType={Uri.EscapeDataString(dataType)}&api_key={Uri.EscapeDataString(apiKey)}";
       var response = await GetJsonAsync<FoodSearchResponse>(url, cancellationToken);
 
       var foods = response?.Foods;
       if (foods == null || foods.Count == 0) return Array.Empty<FoodSearchItem>();
 
       return foods
-        .Select(f => (Item: f, Score: ScoreSearchCandidate(f, query)))
+        .Select(f => (Item: f, Score: ScoreSearchCandidate(f, query, branded)))
         .OrderByDescending(x => x.Score)
         .Select(x => x.Item)
         .ToList();
     }
 
-    private static decimal ScoreSearchCandidate(FoodSearchItem item, string searchQuery)
+    private static decimal ScoreSearchCandidate(FoodSearchItem item, string searchQuery, bool brandedSearch)
     {
       var score = (decimal)(item.Score ?? 0);
       var desc = item.Description ?? string.Empty;
@@ -206,14 +214,16 @@ namespace Infrastructure.Nutrition
 
       if (string.Equals(dataType, "Foundation", StringComparison.OrdinalIgnoreCase))
       {
-        score += 80;
-        if (item.PublishedDate.HasValue && item.PublishedDate.Value < DateTime.UtcNow.AddYears(-3))
+        score += brandedSearch ? 0 : 80;
+        if (!brandedSearch && item.PublishedDate.HasValue && item.PublishedDate.Value < DateTime.UtcNow.AddYears(-3))
           score -= 60;
       }
       else if (string.Equals(dataType, "SR Legacy", StringComparison.OrdinalIgnoreCase))
-        score += 40;
+        score += brandedSearch ? 0 : 40;
+      else if (string.Equals(dataType, "Branded", StringComparison.OrdinalIgnoreCase))
+        score += brandedSearch ? 80 : 0;
       else if (string.Equals(dataType, "Survey (FNDDS)", StringComparison.OrdinalIgnoreCase))
-        score += 10;
+        score += brandedSearch ? 0 : 10;
 
       foreach (var token in TokenizeForMatch(searchQuery))
       {
@@ -222,15 +232,16 @@ namespace Infrastructure.Nutrition
       }
 
       if (searchQuery.Contains("raw", StringComparison.OrdinalIgnoreCase) && descLower.Contains("raw"))
-        score += 15;
+        score += brandedSearch ? 0 : 15;
       if (searchQuery.Contains("uncooked", StringComparison.OrdinalIgnoreCase) && descLower.Contains("uncook"))
-        score += 15;
+        score += brandedSearch ? 0 : 15;
 
       if (descLower.Contains("baby food") || descLower.Contains("babyfood")) score -= 200;
       if (descLower.Contains("candy") || descLower.Contains("snack bar")) score -= 120;
       if (descLower.Contains("fast food") || descLower.Contains("restaurant")) score -= 80;
 
-      if (searchQuery.Contains("raw", StringComparison.OrdinalIgnoreCase)
+      if (!brandedSearch
+          && searchQuery.Contains("raw", StringComparison.OrdinalIgnoreCase)
           && (descLower.Contains("cooked") || descLower.Contains("roasted") || descLower.Contains("fried")))
         score -= 25;
 
@@ -279,19 +290,30 @@ namespace Infrastructure.Nutrition
       return await JsonSerializer.DeserializeAsync<T>(stream, JsonOptions, cancellationToken);
     }
 
-    private static string BuildIngredientSearchQuery(RecipeIngredient ingredient) =>
-      string.IsNullOrWhiteSpace(ingredient.Name) ? null : ExpandFoodName(ingredient.Name);
+    private static string BuildIngredientSearchQuery(RecipeIngredient ingredient)
+    {
+      if (string.IsNullOrWhiteSpace(ingredient.Name)) return null;
+      if (ingredient.Branded) return ingredient.Name.Trim();
+      return ExpandFoodName(ingredient.Name);
+    }
 
     private static decimal? ResolveGrams(RecipeIngredient ingredient, FoodDetails food)
     {
       if (!ingredient.Quantity.HasValue) return null;
+
+      if (ingredient.Branded || IsBrandedFood(food))
+      {
+        var brandedGrams = ResolveBrandedGrams(ingredient, food);
+        if (brandedGrams.HasValue) return brandedGrams;
+        if (ingredient.Branded) return null;
+      }
+
       var quantity = ingredient.Quantity.Value;
       var unit = ingredient.Unit?.Trim();
       var size = ingredient.Size?.Trim();
 
-      if (!string.IsNullOrWhiteSpace(unit) && TryGetGramsPerUnit(unit, out var gramsPerUnit)){
+      if (!string.IsNullOrWhiteSpace(unit) && TryGetGramsPerUnit(unit, out var gramsPerUnit))
         return quantity * gramsPerUnit;
-      }
 
       var portion = FindBestPortion(food.FoodPortions, unit, size);
       if (portion?.GramWeight == null) return null;
@@ -300,6 +322,152 @@ namespace Infrastructure.Nutrition
       if (portionAmount <= 0) portionAmount = 1;
 
       return (quantity / portionAmount) * portion.GramWeight.Value;
+    }
+
+    private static bool IsBrandedFood(FoodDetails food) =>
+      string.Equals(food.DataType, "Branded", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(food.FoodClass, "Branded", StringComparison.OrdinalIgnoreCase);
+
+    private static decimal? ResolveBrandedGrams(RecipeIngredient ingredient, FoodDetails food)
+    {
+      var quantity = ingredient.Quantity!.Value;
+      var unit = ingredient.Unit?.Trim();
+      var canonicalUnit = string.IsNullOrWhiteSpace(unit) ? null : CanonicalizeUnit(unit);
+
+      if (canonicalUnit is "can" or "package")
+      {
+        var packageGrams = ParsePackageWeightGrams(food.PackageWeight);
+        if (packageGrams.HasValue) return quantity * packageGrams.Value;
+      }
+
+      if (canonicalUnit is "g")
+        return quantity;
+
+      if (food.ServingSize is > 0
+          && string.Equals(food.ServingSizeUnit, "g", StringComparison.OrdinalIgnoreCase))
+      {
+        if (canonicalUnit is "serving")
+          return quantity * food.ServingSize.Value;
+
+        if (!string.IsNullOrWhiteSpace(unit)
+            && TryGetGramsFromHouseholdServing(quantity, unit, food, out var householdGrams))
+          return householdGrams;
+
+        if (canonicalUnit is "oz")
+          return quantity * 28.3495m;
+      }
+
+      if (canonicalUnit == null
+          && food.ServingSize is > 0
+          && string.Equals(food.ServingSizeUnit, "g", StringComparison.OrdinalIgnoreCase))
+        return quantity * food.ServingSize.Value;
+
+      if (!string.IsNullOrWhiteSpace(unit) && TryGetGramsPerUnit(unit, out var gramsPerUnit))
+        return quantity * gramsPerUnit;
+
+      return null;
+    }
+
+    private static bool TryGetGramsFromHouseholdServing(
+      decimal quantity,
+      string unit,
+      FoodDetails food,
+      out decimal grams)
+    {
+      grams = 0;
+      if (!TryParseHouseholdServing(food.HouseholdServingFullText, out var householdAmount, out var householdUnit))
+        return false;
+      if (!UnitsAreEquivalent(unit, householdUnit)) return false;
+
+      grams = (quantity / householdAmount) * food.ServingSize!.Value;
+      return grams > 0;
+    }
+
+    private static bool TryParseHouseholdServing(string text, out decimal amount, out string unitToken)
+    {
+      amount = 0;
+      unitToken = null;
+      if (string.IsNullOrWhiteSpace(text)) return false;
+
+      var match = Regex.Match(text.Trim(), @"^(\d+(?:\.\d+)?)\s*(.+)$");
+      if (!match.Success) return false;
+      if (!decimal.TryParse(match.Groups[1].Value, out amount) || amount <= 0) return false;
+
+      unitToken = match.Groups[2].Value.Trim();
+      return !string.IsNullOrWhiteSpace(unitToken);
+    }
+
+    private static bool UnitsAreEquivalent(string unitA, string unitB)
+    {
+      var canonicalA = CanonicalizeUnit(unitA);
+      var canonicalB = CanonicalizeUnit(unitB);
+      return canonicalA != null
+        && canonicalB != null
+        && string.Equals(canonicalA, canonicalB, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string CanonicalizeUnit(string unit)
+    {
+      if (string.IsNullOrWhiteSpace(unit)) return null;
+
+      var normalized = NormalizeUnit(unit);
+      return normalized switch
+      {
+        "g" or "gram" => "g",
+        "tbsp" or "tbs" or "tbl" or "tablespoon" => "tbsp",
+        "tsp" or "teaspoon" => "tsp",
+        "oz" or "ounce" or "onz" => "oz",
+        "cup" or "c" => "cup",
+        "floz" or "fluid ounce" => "floz",
+        "ml" or "milliliter" or "millilitre" or "cc" => "ml",
+        "l" or "liter" or "litre" => "l",
+        "serving" or "portion" => "serving",
+        "can" => "can",
+        "package" or "pkg" => "package",
+        _ => normalized
+      };
+    }
+
+    private static decimal? ParsePackageWeightGrams(string packageWeight)
+    {
+      if (string.IsNullOrWhiteSpace(packageWeight)) return null;
+
+      var gramMatches = Regex.Matches(packageWeight, @"(\d+(?:\.\d+)?)\s*g\b", RegexOptions.IgnoreCase);
+      if (gramMatches.Count > 0
+          && decimal.TryParse(gramMatches[gramMatches.Count - 1].Groups[1].Value, out var grams))
+        return grams;
+
+      var ozMatch = Regex.Match(packageWeight, @"(\d+(?:\.\d+)?)\s*oz\b", RegexOptions.IgnoreCase);
+      if (ozMatch.Success && decimal.TryParse(ozMatch.Groups[1].Value, out var oz))
+        return oz * 28.3495m;
+
+      return null;
+    }
+
+    private static IngredientNutrition CalculateBrandedNutrition(FoodDetails food, decimal grams)
+    {
+      if (food.LabelNutrients != null
+          && food.ServingSize is > 0
+          && string.Equals(food.ServingSizeUnit, "g", StringComparison.OrdinalIgnoreCase))
+      {
+        var servings = grams / food.ServingSize.Value;
+        return new IngredientNutrition
+        {
+          Calories = NonNegative((food.LabelNutrients.Calories?.Value ?? 0) * servings),
+          ProteinGrams = NonNegative((food.LabelNutrients.Protein?.Value ?? 0) * servings),
+          CarbsGrams = NonNegative((food.LabelNutrients.Carbohydrates?.Value ?? 0) * servings),
+          FatGrams = NonNegative((food.LabelNutrients.Fat?.Value ?? 0) * servings)
+        };
+      }
+
+      var scale = grams / 100m;
+      return new IngredientNutrition
+      {
+        Calories = NonNegative(GetEnergyKcalPer100g(food) * scale),
+        ProteinGrams = NonNegative(GetNutrientValue(food, "203", "Protein") * scale),
+        CarbsGrams = NonNegative(GetNutrientValue(food, "205", "Carbohydrate, by difference") * scale),
+        FatGrams = NonNegative(GetNutrientValue(food, "204", "Total lipid (fat)") * scale)
+      };
     }
 
     private static FoodPortion FindBestPortion(IEnumerable<FoodPortion> portions, string unit, string size)
@@ -457,8 +625,28 @@ namespace Infrastructure.Nutrition
 
     private class FoodDetails
     {
+      public string DataType { get; set; }
+      public string FoodClass { get; set; }
+      public decimal? ServingSize { get; set; }
+      public string ServingSizeUnit { get; set; }
+      public string PackageWeight { get; set; }
+      public string HouseholdServingFullText { get; set; }
+      public LabelNutrients LabelNutrients { get; set; }
       public List<FoodNutrient> FoodNutrients { get; set; } = new();
       public List<FoodPortion> FoodPortions { get; set; } = new();
+    }
+
+    private class LabelNutrients
+    {
+      public LabelNutrientValue Calories { get; set; }
+      public LabelNutrientValue Protein { get; set; }
+      public LabelNutrientValue Carbohydrates { get; set; }
+      public LabelNutrientValue Fat { get; set; }
+    }
+
+    private class LabelNutrientValue
+    {
+      public decimal? Value { get; set; }
     }
 
     private class FoodNutrient

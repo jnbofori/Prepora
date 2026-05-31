@@ -13,6 +13,7 @@ namespace Domain
     public string Unit { get; set; }
     public string Size { get; set; }
     public string Note { get; set; }
+    public bool Branded { get; set; }
 
     public decimal? Calories { get; set; }
     public decimal? ProteinGrams { get; set; }

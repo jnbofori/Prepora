@@ -71,7 +71,8 @@ namespace Application.Commands.Recipes
             Calories = ing.Calories,
             ProteinGrams = ing.ProteinGrams,
             CarbsGrams = ing.CarbsGrams,
-            FatGrams = ing.FatGrams
+            FatGrams = ing.FatGrams,
+            Branded = ing.Branded
           });
         }
 

@@ -39,7 +39,8 @@ namespace Application.Commands.Recipes
             Quantity = i.Quantity,
             Unit = string.IsNullOrWhiteSpace(i.Unit) ? null : i.Unit.Trim(),
             Size = string.IsNullOrWhiteSpace(i.Size) ? null : i.Size.Trim(),
-            Note = string.IsNullOrWhiteSpace(i.Note) ? null : i.Note.Trim()
+            Note = string.IsNullOrWhiteSpace(i.Note) ? null : i.Note.Trim(),
+            Branded = i.Branded
           })
           .ToList() ?? new List<RecipeIngredient>();
 
