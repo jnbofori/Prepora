@@ -1,5 +1,6 @@
 using RecipePhotoCommands = Application.Commands.RecipePhotos;
 using RecipeCommands = Application.Commands.Recipes;
+using Application.DTOs.Nutrition;
 using Application.DTOs.Recipes;
 using Application.Queries.Recipes;
 using MediatR;
@@ -48,6 +49,18 @@ namespace API.Controllers
     public async Task<IActionResult> Duplicate(Guid id)
     {
       return HandleResult(await Mediator.Send(new RecipeCommands.Duplicate.Command { Id = id }));
+    }
+
+    [HttpPost("nutrition/calculate")]
+    public async Task<IActionResult> CalculateNutrition([FromBody] CalculateNutritionRequest body)
+    {
+      return HandleResult(await Mediator.Send(new RecipeCommands.CalculateNutrition.Command { Request = body }));
+    }
+
+    [HttpPost("ingredients/parse")]
+    public async Task<IActionResult> ParseIngredients([FromBody] ParseIngredientsRequest body)
+    {
+      return HandleResult(await Mediator.Send(new RecipeCommands.ParseIngredients.Command { Request = body }));
     }
 
     [HttpPost("import")]

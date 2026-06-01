@@ -29,12 +29,18 @@ namespace Application.Commands.Recipes
       private readonly IRecipeRepository _recipes;
       private readonly IUnitOfWork _unitOfWork;
       private readonly IUserAccessor _userAccessor;
+      private readonly INutritionService _nutritionService;
 
-      public Handler(IRecipeRepository recipes, IUnitOfWork unitOfWork, IUserAccessor userAccessor)
+      public Handler(
+        IRecipeRepository recipes,
+        IUnitOfWork unitOfWork,
+        IUserAccessor userAccessor,
+        INutritionService nutritionService)
       {
         _recipes = recipes;
         _unitOfWork = unitOfWork;
         _userAccessor = userAccessor;
+        _nutritionService = nutritionService;
       }
 
       public async Task<Result<Unit>> Handle(Command request, CancellationToken cancellationToken)
@@ -68,7 +74,9 @@ namespace Application.Commands.Recipes
             Name = ing.Name.Trim(),
             Quantity = ing.Quantity,
             Unit = string.IsNullOrWhiteSpace(ing.Unit) ? null : ing.Unit.Trim(),
-            Note = string.IsNullOrWhiteSpace(ing.Note) ? null : ing.Note.Trim()
+            Size = string.IsNullOrWhiteSpace(ing.Size) ? null : ing.Size.Trim(),
+            Note = string.IsNullOrWhiteSpace(ing.Note) ? null : ing.Note.Trim(),
+            Branded = ing.Branded
           });
         }
 
@@ -89,6 +97,17 @@ namespace Application.Commands.Recipes
             Id = Guid.NewGuid(),
             TagName = tag.Trim()
           });
+        }
+
+        if (request.Recipe.HasAnyNutritionProvided())
+        {
+          RecipeNutritionUpdater.ApplyManual(recipe, request.Recipe);
+          RecipeNutritionUpdater.ApplyManualIngredientLines(recipe.Ingredients, request.Recipe);
+        }
+        else
+        {
+          var nutrition = await _nutritionService.CalculateRecipeAsync(recipe.Ingredients, recipe.Servings, cancellationToken);
+          RecipeNutritionUpdater.Apply(recipe, nutrition);
         }
 
         _recipes.Add(recipe);

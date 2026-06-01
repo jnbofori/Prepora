@@ -1,8 +1,7 @@
 namespace Application.DTOs.Recipes
 {
-  public class RecipeIngredientDto
+  public class ParsedIngredientLineDto
   {
-    public Guid Id { get; set; }
     public int SortOrder { get; set; }
     public string Name { get; set; }
     public decimal? Quantity { get; set; }
@@ -10,10 +9,5 @@ namespace Application.DTOs.Recipes
     public string Size { get; set; }
     public string Note { get; set; }
     public bool Branded { get; set; }
-
-    public decimal? Calories { get; set; }
-    public decimal? ProteinGrams { get; set; }
-    public decimal? CarbsGrams { get; set; }
-    public decimal? FatGrams { get; set; }
   }
 }

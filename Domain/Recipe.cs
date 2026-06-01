@@ -17,6 +17,17 @@ namespace Domain
 
     public decimal Servings { get; set; }
 
+    public decimal? Calories { get; set; }
+    public decimal? ProteinGrams { get; set; }
+    public decimal? CarbsGrams { get; set; }
+    public decimal? FatGrams { get; set; }
+
+    public decimal? CaloriesPerServing { get; set; }
+    public decimal? ProteinGramsPerServing { get; set; }
+    public decimal? CarbsGramsPerServing { get; set; }
+    public decimal? FatGramsPerServing { get; set; }
+    public DateTime? NutritionCalculatedUtc { get; set; }
+
     public DateTime CreatedUtc { get; set; }
     public DateTime UpdatedUtc { get; set; }
 
