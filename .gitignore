@@ -476,3 +476,5 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+Infrastructure/Ingredients/Python/.venv

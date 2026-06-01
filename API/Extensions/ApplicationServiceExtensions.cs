@@ -11,6 +11,7 @@ using Infrastructure.Security;
 using Infrastructure.Photos;
 using Infrastructure.Recipes;
 using Infrastructure.Nutrition;
+using Infrastructure.Ingredients;
 
 namespace API.Extensions
 {
@@ -102,6 +103,9 @@ namespace API.Extensions
         client.Timeout = TimeSpan.FromSeconds(20);
       });
       services.AddScoped<INutritionService, UsdaNutritionService>();
+
+      services.Configure<IngredientParserSettings>(config.GetSection("IngredientParser"));
+      services.AddSingleton<IIngredientParserService, PythonIngredientParserService>();
 
       services.Configure<CloudinarySettings>(config.GetSection("Cloudinary"));
 

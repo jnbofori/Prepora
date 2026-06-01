@@ -57,6 +57,12 @@ namespace API.Controllers
       return HandleResult(await Mediator.Send(new RecipeCommands.CalculateNutrition.Command { Request = body }));
     }
 
+    [HttpPost("ingredients/parse")]
+    public async Task<IActionResult> ParseIngredients([FromBody] ParseIngredientsRequest body)
+    {
+      return HandleResult(await Mediator.Send(new RecipeCommands.ParseIngredients.Command { Request = body }));
+    }
+
     [HttpPost("import")]
     public async Task<IActionResult> ImportPreview([FromBody] ImportUrlRequest body)
     {
